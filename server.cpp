@@ -172,28 +172,35 @@ int main(int argc, char *argv[]) {
         return 1;  // Exit if binding fails
     }
 
-    std::cout << "Waiting for connection..." << std::endl;
-    mbedtls_net_init(&client_fd);
+    std::cout << "Server is running. Waiting for connections...\n";
 
-    ret = mbedtls_net_accept(&listen_fd, &client_fd, NULL, 0, NULL);
-    if (ret != 0) {
-        std::cerr << "Failed to accept connection. Error code: " << ret << std::endl;
-        return 1;
+    while (true) {
+        mbedtls_net_init(&client_fd);
+        ret = mbedtls_net_accept(&listen_fd, &client_fd, NULL, 0, NULL);
+        if (ret != 0) {
+            std::cerr << "Failed to accept connection. Error code: " << ret << std::endl;
+            mbedtls_net_free(&client_fd);
+            continue; // Continue to accept new connections
+        }
+
+        std::cout << "Client connected. Setting up SSL..." << std::endl;
+        mbedtls_ssl_set_bio(&ssl, &client_fd, mbedtls_net_send, mbedtls_net_recv, NULL);
+        ret = mbedtls_ssl_handshake(&ssl);
+        if (ret != 0) {
+            std::cerr << "SSL handshake failed. Error code: " << ret << std::endl;
+        } else {
+            std::cout << "SSL handshake successful\n";
+            std::string verify_result = get_ssl_verify_result(ssl);
+            std::cout << "Certificate verification result: " << verify_result << std::endl;
+        }
+
+        // Close the connection
+        mbedtls_ssl_close_notify(&ssl);
+        mbedtls_net_free(&client_fd);
+        mbedtls_ssl_session_reset(&ssl);  // Reset SSL session for the next connection
     }
 
-    std::cout << "Setting up SSL for the connection..." << std::endl;
-    mbedtls_ssl_set_bio(&ssl, &client_fd, mbedtls_net_send, mbedtls_net_recv, NULL);
-
-    ret = mbedtls_ssl_handshake(&ssl);
-    if (ret != 0) {
-        std::cerr << "Handshake failed. Error code: " << ret << std::endl;
-        std::cerr << "Verification result: " << get_ssl_verify_result(ssl) << std::endl;
-    } else {
-        std::cout << "Handshake successful!" << std::endl;
-    }
-
-    mbedtls_ssl_close_notify(&ssl);
-    mbedtls_net_free(&client_fd);
+    // Cleanup resources
     mbedtls_net_free(&listen_fd);
     cleanup_mbedtls(ssl, ssl_conf, cacert, key, cert, ctr_drbg, entropy);
 
