@@ -4,6 +4,8 @@
 #include <iostream>
 #include <cstring>
 #include <psa/crypto.h>
+#include <mbedtls/pem.h>
+#include <mbedtls/platform.h>
 
 std::string get_psa_error_message(psa_status_t status) {
     switch (status) {
@@ -67,6 +69,23 @@ void store_key(psa_key_id_t key_id, const std::string& key_file) {
     std::vector<uint8_t> buffer(size);
     if (!file.read((char*)buffer.data(), size)) {
         handle_error(-1, "Failed to read key file: " + key_file, 0, false);
+    }
+
+    // Check if the key is PEM encoded
+    if (buffer.size() > 0 && buffer[0] == '-') {
+        mbedtls_pem_context pem;
+        mbedtls_pem_init(&pem);
+
+        size_t use_len;
+        int ret = mbedtls_pem_read_buffer(&pem, "-----BEGIN PRIVATE KEY-----", "-----END PRIVATE KEY-----",
+                                          buffer.data(), NULL, 0, &use_len);
+        if (ret != 0) {
+            mbedtls_pem_free(&pem);
+            handle_error(ret, "Failed to parse PEM key file: " + key_file, 0, false);
+        }
+
+        buffer.assign(pem.buf, pem.buf + pem.buflen);
+        mbedtls_pem_free(&pem);
     }
 
     psa_key_attributes_t attributes = PSA_KEY_ATTRIBUTES_INIT;
