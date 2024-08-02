@@ -1,4 +1,5 @@
 #include <iostream>
+#include <cstdlib> // Include this for std::exit
 #include <mbedtls/net_sockets.h>
 #include <mbedtls/ssl.h>
 #include <mbedtls/x509_crt.h>
@@ -32,6 +33,7 @@ void cleanup_mbedtls(mbedtls_ssl_context &ssl, mbedtls_ssl_config &ssl_conf, mbe
 void handle_error(int ret, const std::string &msg) {
     if (ret != 0) {
         std::cerr << msg << " Error code: " << ret << std::endl;
+	std::exit(EXIT_FAILURE); // Exit the program with a failure status
     }
 }
 
