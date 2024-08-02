@@ -30,8 +30,8 @@ void cleanup_mbedtls(mbedtls_ssl_context &ssl, mbedtls_ssl_config &ssl_conf, mbe
     mbedtls_entropy_free(&entropy);
 }
 
-void handle_error(int ret, const std::string &msg) {
-    if (ret != 0) {
+void handle_error(int ret, const std::string &msg, int expected = 0) {
+    if (ret != expected) {
         std::cerr << msg << " Error code: " << ret << std::endl;
 	std::exit(EXIT_FAILURE); // Exit the program with a failure status
     }
@@ -132,13 +132,9 @@ int main(int argc, char *argv[]) {
     initialize_mbedtls(ssl, ssl_conf, cacert, key, cert, ctr_drbg, entropy);
 
     // Initialize RNG
-    mbedtls_entropy_init(&entropy);
-    mbedtls_ctr_drbg_init(&ctr_drbg);
+    std::cout << "Initializing seed CTR-DRBG..." << std::endl;
     ret = mbedtls_ctr_drbg_seed(&ctr_drbg, mbedtls_entropy_func, &entropy, NULL, 0);
-    if (ret != 0) {
-        std::cerr << "Failed to seed CTR-DRBG. Error code: " << ret << std::endl;
-        return 1;
-    }
+    handle_error(ret, "Failed to seed CTR-DRBG");
 
     std::cout << "Loading CA certificate..." << std::endl;
     ret = mbedtls_x509_crt_parse_file(&cacert, ca_cert_file.c_str());
@@ -175,10 +171,7 @@ int main(int argc, char *argv[]) {
     std::cout << "Connecting to server..." << std::endl;
     mbedtls_net_init(&server_fd);
     ret = mbedtls_net_connect(&server_fd, server_addr.c_str(), port.c_str(), MBEDTLS_NET_PROTO_TCP);
-    if (ret != 0) {
-        std::cerr << "Failed to connect to server. Error code: " << ret << std::endl;
-        return 1;  // Exit if connection fails
-    }
+    handle_error(ret, "Failed to connect to server");
 
     std::cout << "Starting handshake..." << std::endl;
     mbedtls_ssl_set_bio(&ssl, &server_fd, mbedtls_net_send, mbedtls_net_recv, NULL);
