@@ -20,9 +20,13 @@ void cleanup_mbedtls(mbedtls_ssl_context &ssl, mbedtls_ssl_config &ssl_conf, mbe
     mbedtls_entropy_free(&entropy);
 }
 
-void handle_error(int ret, const std::string &msg, int expected) {
+void handle_error(int ret, const std::string &msg, int expected, bool print_ret) {
     if (ret != expected) {
-        std::cerr << msg << " Error code: " << ret << std::endl;
+        std::cerr << msg;
+        if (print_ret) {
+            std::cerr << " Error code: " << ret;
+        }
+        std::cerr << std::endl;
         std::exit(EXIT_FAILURE);
     }
 }

@@ -74,26 +74,26 @@ int main(int argc, char *argv[]) {
     // Initialize RNG
     std::cout << "Initializing seed CTR-DRBG..." << std::endl;
     ret = mbedtls_ctr_drbg_seed(&ctr_drbg, mbedtls_entropy_func, &entropy, NULL, 0);
-    handle_error(ret, "Failed to seed CTR-DRBG");
+    handle_error(ret, "Failed to seed CTR-DRBG.");
 
     std::cout << "Loading CA certificate..." << std::endl;
     ret = mbedtls_x509_crt_parse_file(&cacert, ca_cert_file.c_str());
-    handle_error(ret, "Failed to parse CA certificate");
+    handle_error(ret, "Failed to parse CA certificate.");
 
     std::cout << "Loading client certificate..." << std::endl;
     ret = mbedtls_x509_crt_parse_file(&cert, client_cert_file.c_str());
-    handle_error(ret, "Failed to parse client certificate");
+    handle_error(ret, "Failed to parse client certificate.");
 
     std::cout << "Loading client private key..." << std::endl;
     ret = mbedtls_pk_parse_keyfile(&key, client_key_file.c_str(), NULL);
-    handle_error(ret, "Failed to parse client private key");
+    handle_error(ret, "Failed to parse client private key.");
 
     std::cout << "Setting up SSL configuration..." << std::endl;
     ret = mbedtls_ssl_config_defaults(&ssl_conf,
         MBEDTLS_SSL_IS_CLIENT,
         MBEDTLS_SSL_TRANSPORT_STREAM,
         MBEDTLS_SSL_PRESET_DEFAULT);
-    handle_error(ret, "Failed to configure SSL");
+    handle_error(ret, "Failed to configure SSL.");
 
     mbedtls_ssl_conf_authmode(&ssl_conf, MBEDTLS_SSL_VERIFY_REQUIRED);
     mbedtls_ssl_conf_ca_chain(&ssl_conf, &cacert, NULL);
@@ -106,12 +106,12 @@ int main(int argc, char *argv[]) {
 
     std::cout << "Setting up SSL context..." << std::endl;
     ret = mbedtls_ssl_setup(&ssl, &ssl_conf);
-    handle_error(ret, "Failed to set up SSL context");
+    handle_error(ret, "Failed to set up SSL context.");
 
     std::cout << "Connecting to server..." << std::endl;
     mbedtls_net_init(&server_fd);
     ret = mbedtls_net_connect(&server_fd, server_addr.c_str(), port.c_str(), MBEDTLS_NET_PROTO_TCP);
-    handle_error(ret, "Failed to connect to server");
+    handle_error(ret, "Failed to connect to server.");
 
     std::cout << "Starting handshake..." << std::endl;
     mbedtls_ssl_set_bio(&ssl, &server_fd, mbedtls_net_send, mbedtls_net_recv, NULL);
@@ -119,7 +119,7 @@ int main(int argc, char *argv[]) {
     ret = mbedtls_ssl_handshake(&ssl);
     if (ret != 0) {
         std::cerr << "Handshake failed. Error code: " << ret << std::endl;
-        std::cerr << "Verification result: " << get_ssl_verify_result(ssl) << std::endl;
+        std::cerr << get_ssl_verify_result(ssl) << std::endl;
     } else {
         std::cout << "Handshake successful!" << std::endl;
     }
