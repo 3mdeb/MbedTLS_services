@@ -7,45 +7,6 @@
 #include <mbedtls/pem.h>
 #include <mbedtls/platform.h>
 
-std::string get_psa_error_message(psa_status_t status) {
-    switch (status) {
-        case PSA_SUCCESS:
-            return "Success";
-        case PSA_ERROR_ALREADY_EXISTS:
-            return "Key already exists";
-        case PSA_ERROR_NOT_SUPPORTED:
-            return "Not supported";
-        case PSA_ERROR_INVALID_ARGUMENT:
-            return "Invalid argument";
-        case PSA_ERROR_INSUFFICIENT_MEMORY:
-            return "Insufficient memory";
-        case PSA_ERROR_INSUFFICIENT_STORAGE:
-            return "Insufficient storage";
-        case PSA_ERROR_COMMUNICATION_FAILURE:
-            return "Communication failure";
-        case PSA_ERROR_DATA_CORRUPT:
-            return "Data corrupt";
-        case PSA_ERROR_DATA_INVALID:
-            return "Data invalid";
-        case PSA_ERROR_STORAGE_FAILURE:
-            return "Storage failure";
-        case PSA_ERROR_HARDWARE_FAILURE:
-            return "Hardware failure";
-        case PSA_ERROR_CORRUPTION_DETECTED:
-            return "Corruption detected";
-        case PSA_ERROR_BAD_STATE:
-            return "Bad state, library not initialized";
-        default:
-            return "Unknown error code";
-    }
-}
-
-void handle_psa_error(psa_status_t status, const std::string &msg) {
-    if (status != PSA_SUCCESS) {
-        std::cerr << msg << "Error Code: " << status << " -> " << get_psa_error_message(status) << std::endl;
-        std::exit(EXIT_FAILURE);
-    }
-}
 
 void print_help(const std::string& binary_name) {
     std::cout << "Usage: " << binary_name << " [command] [options]\n";
