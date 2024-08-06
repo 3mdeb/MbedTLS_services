@@ -24,7 +24,7 @@ void handle_error(int ret, const std::string &msg, int expected, bool print_ret)
     if (ret != expected) {
         std::cerr << msg;
         if (print_ret) {
-            std::cerr << " Error code: " << ret;
+            std::cerr << std::endl << " Error code: " << ret;
         }
         std::cerr << std::endl;
         std::exit(EXIT_FAILURE);
@@ -89,7 +89,7 @@ std::string get_psa_error_message(psa_status_t status) {
 
 void handle_psa_error(psa_status_t status, const std::string &msg) {
     if (status != PSA_SUCCESS) {
-        std::cerr << msg << "Error Code: " << status << " -> " << get_psa_error_message(status) << std::endl;
+        std::cerr << msg << std::endl << "Error Code: " << status << " -> " << get_psa_error_message(status) << std::endl;
         std::exit(EXIT_FAILURE);
     }
 }
