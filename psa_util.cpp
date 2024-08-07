@@ -32,26 +32,27 @@ void store_key(psa_key_id_t key_id, const std::string& key_file) {
         handle_error(-1, "Failed to read key file: " + key_file, 0, false);
     }
 
+    // Disabled for now
     // Check if the key is PEM encoded
-    if (buffer.size() > 0 && buffer[0] == '-') {
-        mbedtls_pem_context pem;
-        mbedtls_pem_init(&pem);
+    //if (buffer.size() > 0 && buffer[0] == '-') {
+    //    mbedtls_pem_context pem;
+    //    mbedtls_pem_init(&pem);
 
-        size_t use_len;
-        int ret = mbedtls_pem_read_buffer(&pem, "-----BEGIN PRIVATE KEY-----", "-----END PRIVATE KEY-----",
-                                          buffer.data(), NULL, 0, &use_len);
-        if (ret != 0) {
-            mbedtls_pem_free(&pem);
-            handle_error(ret, "Failed to parse PEM key file: " + key_file, 0, false);
-        }
+    //    size_t use_len;
+    //    int ret = mbedtls_pem_read_buffer(&pem, "-----BEGIN PRIVATE KEY-----", "-----END PRIVATE KEY-----",
+    //                                      buffer.data(), NULL, 0, &use_len);
+    //    if (ret != 0) {
+    //        mbedtls_pem_free(&pem);
+    //        handle_error(ret, "Failed to parse PEM key file: " + key_file, 0, false);
+    //    }
 
-        buffer.assign(pem.buf, pem.buf + pem.buflen);
-        mbedtls_pem_free(&pem);
-    }
+    //    buffer.assign(pem.buf, pem.buf + pem.buflen);
+    //    mbedtls_pem_free(&pem);
+    //}
 
     psa_key_attributes_t attributes = PSA_KEY_ATTRIBUTES_INIT;
     psa_set_key_id(&attributes, key_id);
-    psa_set_key_usage_flags(&attributes, PSA_KEY_USAGE_SIGN | PSA_KEY_USAGE_VERIFY);
+    psa_set_key_usage_flags(&attributes, PSA_KEY_USAGE_SIGN_HASH | PSA_KEY_USAGE_VERIFY_MESSAGE);
     psa_set_key_algorithm(&attributes, PSA_ALG_RSA_PKCS1V15_SIGN(PSA_ALG_ANY_HASH));
     psa_set_key_type(&attributes, PSA_KEY_TYPE_RSA_KEY_PAIR);
 

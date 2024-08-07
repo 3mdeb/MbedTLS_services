@@ -81,7 +81,7 @@ int main(int argc, char *argv[]) {
     handle_error(ret, "Failed to parse server certificate");
 
     std::cout << "Loading server private key..." << std::endl;
-    ret = mbedtls_pk_parse_keyfile(&key, server_key_file.c_str(), NULL);
+    ret = mbedtls_pk_parse_keyfile(&key, server_key_file.c_str(), NULL, mbedtls_ctr_drbg_random, &ctr_drbg);
     handle_error(ret, "Failed to parse server private key");
 
     std::cout << "Setting up SSL configuration..." << std::endl;
