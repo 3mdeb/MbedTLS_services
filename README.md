@@ -32,14 +32,14 @@ the connection attempt.
 
 ## Prerequisites
 
-- [Mbed TLS 2.28.8](https://www.trustedfirmware.org/projects/mbed-tls/)
+- [Mbed TLS 3.6.0](https://www.trustedfirmware.org/projects/mbed-tls/)
 - Tested with [OpenSSL 3.1.0](https://openssl-library.org/post/2023-03-07-openssl3.1release/)
   and [OpenSSL 3.2.0](https://openssl-library.org/post/2023-11-06-openssl32/)
 
 If you have `nix` installed you can easily enter a shell with dependencies with:
 
 ```sh
-nix-shell -p mbedtls_2
+nix-shell -p mbedtls
 ```
 
 ## Scenario
