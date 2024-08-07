@@ -43,6 +43,22 @@ std::string get_ssl_verify_result(mbedtls_ssl_context &ssl) {
         if (flags & MBEDTLS_X509_BADCERT_REVOKED) result += "Certificate revoked ";
         if (flags & MBEDTLS_X509_BADCERT_CN_MISMATCH) result += "CN mismatch ";
         if (flags & MBEDTLS_X509_BADCERT_NOT_TRUSTED) result += "Certificate not trusted ";
+        if (flags & MBEDTLS_X509_BADCRL_NOT_TRUSTED) result += "CRL not trusted ";
+        if (flags & MBEDTLS_X509_BADCRL_EXPIRED) result += "CRL expired ";
+        if (flags & MBEDTLS_X509_BADCERT_MISSING) result += "Certificate missing ";
+        if (flags & MBEDTLS_X509_BADCERT_SKIP_VERIFY) result += "Verification skipped ";
+        if (flags & MBEDTLS_X509_BADCERT_OTHER) result += "Other reason ";
+        if (flags & MBEDTLS_X509_BADCERT_FUTURE) result += "Certificate validity starts in the future ";
+        if (flags & MBEDTLS_X509_BADCRL_FUTURE) result += "CRL is from the future ";
+        if (flags & MBEDTLS_X509_BADCERT_KEY_USAGE) result += "Key usage mismatch ";
+        if (flags & MBEDTLS_X509_BADCERT_EXT_KEY_USAGE) result += "Extended key usage mismatch ";
+        if (flags & MBEDTLS_X509_BADCERT_NS_CERT_TYPE) result += "NS cert type mismatch ";
+        if (flags & MBEDTLS_X509_BADCERT_BAD_MD) result += "Unacceptable hash ";
+        if (flags & MBEDTLS_X509_BADCERT_BAD_PK) result += "Unacceptable PK alg ";
+        if (flags & MBEDTLS_X509_BADCERT_BAD_KEY) result += "Unacceptable key ";
+        if (flags & MBEDTLS_X509_BADCRL_BAD_MD) result += "CRL unacceptable hash ";
+        if (flags & MBEDTLS_X509_BADCRL_BAD_PK) result += "CRL unacceptable PK alg ";
+        if (flags & MBEDTLS_X509_BADCRL_BAD_KEY) result += "CRL unacceptable key ";
     }
 
     return result;
