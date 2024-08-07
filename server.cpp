@@ -125,10 +125,10 @@ int main(int argc, char *argv[]) {
         ret = mbedtls_ssl_handshake(&ssl);
         if (ret != 0) {
             std::cerr << "SSL handshake failed. Error code: " << ret << std::endl;
-        } else {
-            std::cout << "SSL handshake successful\n";
             std::string verify_result = get_ssl_verify_result(ssl);
             std::cout << "Certificate verification result: " << verify_result << std::endl;
+        } else {
+            std::cout << "SSL handshake successful\n";
         }
 
         // Close the connection
