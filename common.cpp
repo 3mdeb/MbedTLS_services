@@ -36,9 +36,9 @@ std::string get_ssl_verify_result(mbedtls_ssl_context &ssl) {
     std::string result;
 
     if (flags == 0) {
-        result = "No verification errors";
+        result = "No certificate verification errors";
     } else {
-        result = "Verification errors: ";
+        result = "Certificate verification errors: ";
         if (flags & MBEDTLS_X509_BADCERT_EXPIRED) result += "Certificate expired ";
         if (flags & MBEDTLS_X509_BADCERT_REVOKED) result += "Certificate revoked ";
         if (flags & MBEDTLS_X509_BADCERT_CN_MISMATCH) result += "CN mismatch ";
