@@ -11,15 +11,28 @@
 #include <mbedtls/debug.h>
 #include <mbedtls/entropy.h>
 #include <mbedtls/ctr_drbg.h>
+#include <mbedtls/x509_csr.h>
 #include <psa/crypto.h>
 
 #define DEFAULT_PORT "4433"
+#define CSR_SIZE 4096
+#define KEY_SIZE 4096
+#define CLIENT_CERT_SIZE 4096
+#define PUBLIC_EXPONENT 65537
 
-void initialize_mbedtls(mbedtls_ssl_context &ssl, mbedtls_ssl_config &ssl_conf, mbedtls_x509_crt &cacert, mbedtls_pk_context &key, mbedtls_x509_crt &cert, mbedtls_ctr_drbg_context &ctr_drbg, mbedtls_entropy_context &entropy);
-void cleanup_mbedtls(mbedtls_ssl_context &ssl, mbedtls_ssl_config &ssl_conf, mbedtls_x509_crt &cacert, mbedtls_pk_context &key, mbedtls_x509_crt &cert, mbedtls_ctr_drbg_context &ctr_drbg, mbedtls_entropy_context &entropy);
-void handle_error(int ret, const std::string &msg, int expected = 0, bool print_ret = true);
+void initialize_mbedtls(mbedtls_ssl_context &ssl, mbedtls_ssl_config &ssl_conf,
+		mbedtls_x509_crt &cacert, mbedtls_pk_context &key,
+		mbedtls_x509_crt &cert, mbedtls_ctr_drbg_context &ctr_drbg,
+		mbedtls_entropy_context &entropy);
+void cleanup_mbedtls(mbedtls_ssl_context &ssl, mbedtls_ssl_config &ssl_conf,
+		mbedtls_x509_crt &cacert, mbedtls_pk_context &key,
+		mbedtls_x509_crt &cert, mbedtls_ctr_drbg_context &ctr_drbg,
+		mbedtls_entropy_context &entropy);
+void handle_error(int ret, const std::string &msg, int expected = 0,
+		bool print_ret = true);
 std::string get_ssl_verify_result(mbedtls_ssl_context &ssl);
-void debug_callback(void *ctx, int level, const char *file, int line, const char *str);
+void debug_callback(void *ctx, int level, const char *file, int line,
+		const char *str);
 std::string get_psa_error_message(psa_status_t status);
 void handle_psa_error(psa_status_t status, const std::string &msg);
 
