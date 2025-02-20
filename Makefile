@@ -18,6 +18,9 @@ COMMON_SRC = common.cpp
 CA_SRC = ca.cpp
 PEER_SRC = peer.cpp
 
+# Installation destination:
+SBINDIR ?= /usr/sbin
+
 # Targets and rules
 all: $(SERVER_BIN) $(CLIENT_BIN) $(UTIL_BIN) $(CA_BIN) $(PEER_BIN)
 
@@ -36,9 +39,15 @@ $(CA_BIN): $(CA_SRC) $(COMMON_SRC)
 $(PEER_BIN): $(PEER_SRC) $(COMMON_SRC)
 	$(CXX) $(CXXFLAGS) -o $@ $(PEER_SRC) $(COMMON_SRC) $(LDFLAGS)
 
+# Installation for quick testing with Yocto:
+install: $(CA_BIN) $(PEER_BIN)
+	install -d $(DESTDIR)$(SBINDIR)
+	install -m 0755 $(CA_BIN) $(DESTDIR)/$(SBINDIR)
+	install -m 0755 $(PEER_BIN) $(DESTDIR)/$(SBINDIR)
+
 # Clean up build artifacts
 clean:
 	rm -f $(SERVER_BIN) $(CLIENT_BIN) $(UTIL_BIN) $(CA_BIN) $(PEER_BIN)
 
 # Phony targets
-.PHONY: all clean
+.PHONY: all clean install
