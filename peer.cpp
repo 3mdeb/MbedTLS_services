@@ -43,7 +43,7 @@ static int write_csr_to_buffer(mbedtls_x509write_csr *write_csr,
 		    ns_cert_type);
     handle_error(ret, "Failed to set CSR key usage");
 
-    ret = mbedtls_x509write_csr_set_subject_name(write_csr, "C=PL,L=test,OU=test,O=test,CN=test,EMAIL=test@test.com");
+    ret = mbedtls_x509write_csr_set_subject_name(write_csr, "CN=test,O=test,C=PL");
     handle_error(ret, "Failed to set subject name");
 
     mbedtls_x509write_csr_set_key(write_csr, key); 
