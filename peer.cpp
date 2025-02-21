@@ -29,9 +29,6 @@ static int write_csr_to_buffer(mbedtls_x509write_csr *write_csr,
 
     mbedtls_x509write_csr_set_md_alg(write_csr, MBEDTLS_MD_SHA256);
 
-    ret = mbedtls_x509write_csr_set_subject_name(write_csr, "Test Subject");
-    handle_error(ret, "Failed to set CSR subject name");
-
     ret = mbedtls_x509write_csr_set_key_usage(write_csr,
 		    MBEDTLS_X509_KU_DIGITAL_SIGNATURE |
 		    MBEDTLS_X509_KU_NON_REPUDIATION |
