@@ -4,7 +4,6 @@ void print_help(const std::string& binary_name) {
     std::cout << "Usage: " << binary_name << " [options]\n";
     std::cout << "Options:\n";
     std::cout << "  --ca-root-certificate <file> CA root certificate file (required)\n";
-    std::cout << "  --ca-server-certificate <file> CA server certificate file (required)\n";
     std::cout << "  --ca-private-key <file> CA private key file (required)\n";
     std::cout << "  -p <port>               Port to listen on (default: 4433)\n";
     std::cout << "  -v, -vv, -vvv, -vvvv    Set verbosity level (default: 0)\n";
@@ -13,7 +12,7 @@ void print_help(const std::string& binary_name) {
 
 // Function to generate a client certificate signed by the CA
 int issue_client_certificate(mbedtls_pk_context *ca_key, mbedtls_x509_csr *csr,
-		unsigned char cert_buf[CLIENT_CERT_SIZE],
+		unsigned char cert_buf[CERT_SIZE],
 		int (*f_rng)(void *, unsigned char *, size_t),
 		mbedtls_ctr_drbg_context *ctr_drbg) {
     int ret = 0;
@@ -23,6 +22,12 @@ int issue_client_certificate(mbedtls_pk_context *ca_key, mbedtls_x509_csr *csr,
     mbedtls_x509write_crt_init(&cert);
 
     mbedtls_x509write_crt_set_version(&cert, MBEDTLS_X509_CRT_VERSION_3);
+
+    ret = mbedtls_x509write_crt_set_ns_cert_type(&cert, csr->ns_cert_type);
+    handle_error(ret, "Failed to set certificate type");
+
+    ret = mbedtls_x509write_crt_set_key_usage(&cert, csr->key_usage);
+    handle_error(ret, "Failed to set certificate key usage");
 
     ret = mbedtls_x509write_crt_set_issuer_name(&cert, "C=PL,L=test,OU=test,O=testCA,CN=testCA,EMAIL=testCA@test.com");
     handle_error(ret, "Failed to set certificate issuer");
@@ -49,7 +54,7 @@ int issue_client_certificate(mbedtls_pk_context *ca_key, mbedtls_x509_csr *csr,
     mbedtls_x509write_crt_set_md_alg(&cert, MBEDTLS_MD_SHA256);
     mbedtls_x509write_crt_set_issuer_key(&cert, ca_key);
 
-    ret = mbedtls_x509write_crt_der(&cert, cert_buf, (size_t)CLIENT_CERT_SIZE,
+    ret = mbedtls_x509write_crt_der(&cert, cert_buf, (size_t)CERT_SIZE,
                               f_rng, ctr_drbg);
     handle_error(ret, "Failed to write client certificate");
 
@@ -66,10 +71,10 @@ int receive_csr(mbedtls_ssl_context *ssl, unsigned char output_buf[CSR_SIZE]){
 }
 
 static int send_certificate_to_client(mbedtls_ssl_context *ssl,
-		unsigned char cert_buf[CLIENT_CERT_SIZE]){
+		unsigned char cert_buf[CERT_SIZE]){
     int ret = 0;
 
-    ret = mbedtls_ssl_write(ssl, cert_buf, (size_t)CLIENT_CERT_SIZE);
+    ret = mbedtls_ssl_write(ssl, cert_buf, (size_t)CERT_SIZE);
     handle_error(ret, "Failed to send certificate.");
 
     return ret;
@@ -86,11 +91,11 @@ int main(int argc, char *argv[]) {
     mbedtls_net_context listen_fd, client_fd;
     mbedtls_ssl_context ssl;
     mbedtls_ssl_config ssl_conf;
-    std::string port = DEFAULT_PORT;
+    std::string port = DEFAULT_LISTEN_PORT;
 
     mbedtls_x509_csr csr;
     unsigned char csr_buf[CSR_SIZE];
-    unsigned char issued_cert_buf[CLIENT_CERT_SIZE];
+    unsigned char issued_cert_buf[CERT_SIZE];
 
     // Other:
     mbedtls_ctr_drbg_context ctr_drbg;

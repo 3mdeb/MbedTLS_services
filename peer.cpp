@@ -1,19 +1,28 @@
 #include "common.h"
+#include <unistd.h>
+#include <cstring>
+
+extern const mbedtls_pk_info_t mbedtls_rsa_info;
 
 void print_help(const std::string& binary_name) {
     std::cout << "Usage: " << binary_name << " [options]\n";
     std::cout << "Options:\n";
     std::cout << "  --ca-certificate <file> CA certificate file (required)\n";
     std::cout << "  --ca-server-addr <ip address> CA Server IP address\n";
-    std::cout << "  --peer-addr <ip address> peer addres for mutual authentication\n";
-    std::cout << "  -p <port>               Port to use for communication (default: 4433)\n";
+    std::cout << "  --peer-addr <ip address> Peer addres for mutual authentication\n";
+    std::cout << "  -pl <port>               Port to listen on (default: 4432)\n";
+    std::cout << "  -ps <port>               Port to send from (default: 4433)\n";
+    std::cout << "  --connect-first <TRUE/FALSE> Whether this instance will connect\n";
+    std::cout << "  to peer first (TRUE), or will wait for peer to connect first\n";
+    std::cout <<"  (FALSE) and then try to connect\n";
     std::cout << "  -v, -vv, -vvv, -vvvv    Set verbosity level (default: 0)\n";
     std::cout << "  -h, --help              Show this help message\n";
 }
 
 static int write_csr_to_buffer(mbedtls_x509write_csr *write_csr,
 		mbedtls_pk_context *key, unsigned char output_buf[CSR_SIZE],
-		int (*f_rng)(void *, unsigned char *, size_t), void *p_rng){
+		int (*f_rng)(void *, unsigned char *, size_t), void *p_rng,
+		unsigned char ns_cert_type){
     int ret = 0;
 
     std::cout << "Writing CSR..." << std::endl;
@@ -34,7 +43,7 @@ static int write_csr_to_buffer(mbedtls_x509write_csr *write_csr,
     handle_error(ret, "Failed to set CSR key usage");
 
     ret = mbedtls_x509write_csr_set_ns_cert_type(write_csr,
-		    MBEDTLS_X509_NS_CERT_TYPE_SSL_SERVER);
+		    ns_cert_type);
     handle_error(ret, "Failed to set CSR key usage");
 
     ret = mbedtls_x509write_csr_set_subject_name(write_csr, "C=PL,L=test,OU=test,O=test,CN=test,EMAIL=test@test.com");
@@ -50,16 +59,22 @@ static int write_csr_to_buffer(mbedtls_x509write_csr *write_csr,
 
 static int setup_ssl(mbedtls_ssl_context *ssl, mbedtls_ssl_config *ssl_config,
 		int (*f_rng)(void *, unsigned char *, size_t),
-		mbedtls_ctr_drbg_context *p_rng, int verbosity){
+		mbedtls_ctr_drbg_context *p_rng, int verbosity,
+		int connection_type, int auth_mode, mbedtls_x509_crt *cacert,
+		mbedtls_x509_crt *cert, mbedtls_pk_context *key){
     int ret = 0;
 
     ret = mbedtls_ssl_config_defaults(ssl_config,
-        MBEDTLS_SSL_IS_CLIENT,
+        connection_type,
         MBEDTLS_SSL_TRANSPORT_STREAM,
         MBEDTLS_SSL_PRESET_DEFAULT);
     handle_error(ret, "Failed to configure SSL.");
 
-    mbedtls_ssl_conf_authmode(ssl_config, MBEDTLS_SSL_VERIFY_OPTIONAL);
+    mbedtls_ssl_conf_authmode(ssl_config, auth_mode);
+    if (auth_mode == MBEDTLS_SSL_VERIFY_REQUIRED){
+        mbedtls_ssl_conf_ca_chain(ssl_config, cacert, NULL);
+        mbedtls_ssl_conf_own_cert(ssl_config, cert, key);
+    }
     mbedtls_ssl_conf_rng(ssl_config, f_rng, p_rng);
 
     // Set debug callback and verbosity level
@@ -81,12 +96,6 @@ static int do_handshake(mbedtls_ssl_context *ssl,
     mbedtls_ssl_set_bio(ssl, fd, mbedtls_net_send, mbedtls_net_recv, NULL);
 
     ret = mbedtls_ssl_handshake(ssl);
-    if (ret != 0) {
-        std::cerr << "Handshake failed. Error code: " << ret << std::endl;
-        std::cerr << get_ssl_verify_result(*ssl) << std::endl;
-    } else {
-        std::cout << "Handshake successful!" << std::endl;
-    }
 
     return ret;
 }
@@ -100,35 +109,92 @@ static int send_csr(mbedtls_ssl_context *ssl, unsigned char csr_buf[CSR_SIZE]){
     return ret;
 }
 
-static int recieve_certificate(mbedtls_ssl_context *ssl, unsigned char cert_buf[CLIENT_CERT_SIZE]){
+static int recieve_certificate(mbedtls_ssl_context *ssl,
+		unsigned char cert_buf[CERT_SIZE]){
     int ret = 0;
 
-    ret = mbedtls_ssl_read(ssl, cert_buf, CLIENT_CERT_SIZE);
+    ret = mbedtls_ssl_read(ssl, cert_buf, CERT_SIZE);
     handle_error(ret, "Failed to recieve certificate");
+
+    return ret;
+}
+
+static int get_cert_from_ca(mbedtls_x509_crt *cert,mbedtls_pk_context *key,
+		int (*f_rng)(void *, unsigned char *, size_t),
+		mbedtls_ctr_drbg_context *p_rng,
+		int verbosity, std::string ca_server_addr,
+		std::string port_send, unsigned char ns_cert_type){
+    int ret = 0;
+    mbedtls_x509write_csr write_csr;
+    unsigned char csr_buf[CSR_SIZE];
+    unsigned char cert_buf[CERT_SIZE];
+
+    mbedtls_net_context ca_server_fd;
+    mbedtls_ssl_context ssl_ca_server;
+    mbedtls_ssl_config ssl_conf_ca_server;
+
+    // Init SSL for communication with CA server:
+    mbedtls_x509write_csr_init(&write_csr);
+    mbedtls_ssl_init(&ssl_ca_server);
+    mbedtls_ssl_config_init(&ssl_conf_ca_server);
+
+    // Prepare CSR for sending to TA, the final CSR is being written to the
+    // buffer in PEM format:
+    std::cout << "Acquiring certificate..." << std::endl;
+    ret = write_csr_to_buffer(&write_csr, key, csr_buf,
+		f_rng, p_rng, ns_cert_type);
+    handle_error(ret, "Failed to write CSR to buffer");
+
+    // Setup SSL for communications with CA:
+    ret = setup_ssl(&ssl_ca_server, &ssl_conf_ca_server,
+		    f_rng, p_rng, verbosity, MBEDTLS_SSL_IS_CLIENT,
+		    MBEDTLS_SSL_VERIFY_NONE, NULL, NULL, NULL);
+    handle_error(ret, "Failed to set up SLL server");
+
+    std::cout << "Connecting via SSL..." << std::endl;
+    mbedtls_net_init(&ca_server_fd);
+    ret = mbedtls_net_connect(&ca_server_fd, ca_server_addr.c_str(),
+		    port_send.c_str(), MBEDTLS_NET_PROTO_TCP);
+    handle_error(ret, "Failed to connect via SSL.");
+
+    // Handshake but without certificates:
+    ret = do_handshake(&ssl_ca_server, &ca_server_fd);
+    handle_error(ret, "Failed to do a handshake with CA server");
+
+    ret = send_csr(&ssl_ca_server, csr_buf);
+    handle_error(ret, "Failed to send CSR");
+
+    ret = recieve_certificate(&ssl_ca_server, cert_buf);
+    handle_error(ret, "Failed to get server certificate from CA");
+
+    ret = mbedtls_x509_crt_parse_der(cert, cert_buf, CERT_SIZE);
+    handle_error(ret, "Failed to parse issued certificate");
+
+    mbedtls_net_free(&ca_server_fd);
+    mbedtls_ssl_free(&ssl_ca_server);
+    mbedtls_ssl_config_free(&ssl_conf_ca_server);
 
     return ret;
 }
 
 int main(int argc, char *argv[]) {
     mbedtls_x509_crt cacert;
-    mbedtls_x509_crt cert;
+    mbedtls_x509_crt client_cert, server_cert;
     mbedtls_rsa_context *rsa_ctx;
     mbedtls_pk_context key;
     std::string ca_cert_file;
 
-    mbedtls_net_context listen_fd, peer_fd, ca_server_fd;
-    mbedtls_ssl_context ssl_peer, ssl_ca_server;
-    mbedtls_ssl_config ssl_conf_peer, ssl_conf_ca_server;
-    std::string port = DEFAULT_PORT;
+    mbedtls_net_context listen_fd, peer_fd;
+    mbedtls_ssl_context ssl_peer_listen, ssl_peer_send;
+    mbedtls_ssl_config ssl_conf_peer_listen, ssl_conf_peer_send;
+    std::string port_listen = DEFAULT_LISTEN_PORT;
+    std::string port_send = DEFAULT_SEND_PORT;
     std::string ca_server_addr;
     std::string peer_addr;
 
-    mbedtls_x509write_csr write_csr;
-    unsigned char csr_buf[CSR_SIZE];
-    unsigned char cert_buf[CLIENT_CERT_SIZE];
-
     mbedtls_ctr_drbg_context ctr_drbg;
     mbedtls_entropy_context entropy;
+    std::string connect_first;
     int ret;
     int verbosity = 0;
 
@@ -149,8 +215,16 @@ int main(int argc, char *argv[]) {
             verbosity = 3;
         } else if (arg == "-vvvv") {
             verbosity = 4;
-        } else if (arg == "-p" && i + 1 < argc) {
-            port = argv[++i];
+        } else if (arg == "-pl" && i + 1 < argc) {
+            port_listen = argv[++i];
+        } else if (arg == "-ps" && i + 1 < argc) {
+            port_send = argv[++i];
+        } else if (arg == "--connect-first" && i + 1 < argc) {
+            connect_first = argv[++i];
+	    if (std::strcmp(connect_first.c_str(), "TRUE") != 0 && std::strcmp(connect_first.c_str(), "FALSE") != 0){
+                std::cerr << "Wrong value for --connect-first, possible values: TRUE, FALSE" << std::endl;
+                return 1;
+	    }
         } else if (arg == "--ca-certificate" && i + 1 < argc) {
             ca_cert_file = argv[++i];
 	} else if (arg == "--ca-server-addr" && i + 1 < argc){
@@ -170,13 +244,12 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    // Init SSL for communication with CA server:
-    mbedtls_x509write_csr_init(&write_csr);
-    mbedtls_ssl_init(&ssl_ca_server);
-    mbedtls_ssl_config_init(&ssl_conf_ca_server);
+    // Basic initialization:
     mbedtls_x509_crt_init(&cacert);
     mbedtls_pk_init(&key);
-    mbedtls_x509_crt_init(&cert);
+    mbedtls_pk_setup(&key, &mbedtls_rsa_info);
+    mbedtls_x509_crt_init(&client_cert);
+    mbedtls_x509_crt_init(&server_cert);
     mbedtls_ctr_drbg_init(&ctr_drbg);
     mbedtls_entropy_init(&entropy);
 
@@ -190,7 +263,7 @@ int main(int argc, char *argv[]) {
     ret = mbedtls_x509_crt_parse_file(&cacert, ca_cert_file.c_str());
     handle_error(ret, "Failed to parse CA certificate");
 
-    std::cout << "Generating server private key..." << std::endl;
+    std::cout << "Generating private key..." << std::endl;
 
     // PK should have type MBETLS_PK_RSA to continue:
     switch (mbedtls_pk_get_type(&key)){
@@ -206,91 +279,104 @@ int main(int argc, char *argv[]) {
         handle_error(1, "Failed to get RSA context");
 
     // Generate the keys:
-    ret = mbedtls_rsa_gen_key(rsa_ctx, mbedtls_ctr_drbg_random, &ctr_drbg, KEY_SIZE, PUBLIC_EXPONENT);
-    handle_error(ret, "Failed to generate server private key");
+    ret = mbedtls_rsa_gen_key(rsa_ctx, mbedtls_ctr_drbg_random, &ctr_drbg,
+		    KEY_SIZE, PUBLIC_EXPONENT);
+    handle_error(ret, "Failed to generate private key");
 
-    // Prepare CSR for sending to TA, the final CSR is being written to the
-    // buffer in PEM format:
-    std::cout << "Acquiring certificate..." << std::endl;
-    ret = write_csr_to_buffer(&write_csr, &key, csr_buf,
-		mbedtls_ctr_drbg_random, &ctr_drbg);
-    handle_error(ret, "Failed to write CSR to buffer");
+    // Get server certificate:
+    ret = get_cert_from_ca(&server_cert, &key, mbedtls_ctr_drbg_random,
+		&ctr_drbg, verbosity, ca_server_addr, port_send,
+		MBEDTLS_X509_NS_CERT_TYPE_SSL_SERVER);
+    handle_error(ret, "Failed to get server certificate");
 
-    // Setup SSL for communications with CA:
-    ret = setup_ssl(&ssl_ca_server, &ssl_conf_ca_server,
-		    mbedtls_ctr_drbg_random, &ctr_drbg, verbosity);
-    handle_error(ret, "Failed to set up SLL server");
+    // Get client certificate:
+    ret = get_cert_from_ca(&client_cert, &key, mbedtls_ctr_drbg_random,
+		&ctr_drbg, verbosity, ca_server_addr, port_send,
+		MBEDTLS_X509_NS_CERT_TYPE_SSL_CLIENT);
+    handle_error(ret, "Failed to get client certificate");
 
-    std::cout << "Connecting via SSL..." << std::endl;
-    mbedtls_net_init(&ca_server_fd);
-    ret = mbedtls_net_connect(&ca_server_fd, ca_server_addr.c_str(), port.c_str(), MBEDTLS_NET_PROTO_TCP);
-    handle_error(ret, "Failed to connect via SSL.");
+    // Initialize server SLL:
+    mbedtls_ssl_init(&ssl_peer_listen);
+    mbedtls_ssl_config_init(&ssl_conf_peer_listen);
+    mbedtls_ssl_init(&ssl_peer_send);
+    mbedtls_ssl_config_init(&ssl_conf_peer_send);
 
-    // Handshake but without certificates:
-    ret = do_handshake(&ssl_ca_server, &ca_server_fd);
-    handle_error(ret, "Failed to do a handshake with CA server");
-
-    ret = send_csr(&ssl_ca_server, csr_buf);
-    handle_error(ret, "Failed to send CSR");
-
-    ret = recieve_certificate(&ssl_ca_server, cert_buf);
-    handle_error(ret, "Failed to get server certificate from CA");
-
-    ret = mbedtls_x509_crt_parse_der(&cert, cert_buf, CLIENT_CERT_SIZE);
-    handle_error(ret, "Failed to parse issued certificate");
-
-    // Initialize SLL for communication with peer:
-    mbedtls_ssl_init(&ssl_peer);
-    mbedtls_ssl_config_init(&ssl_conf_peer);
-
-    // Setup SSL for communications with peer:
-    ret = setup_ssl(&ssl_peer, &ssl_conf_peer,
-		    mbedtls_ctr_drbg_random, &ctr_drbg, verbosity);
+    // Setup server SSL:
+    ret = setup_ssl(&ssl_peer_listen, &ssl_conf_peer_listen,
+		    mbedtls_ctr_drbg_random, &ctr_drbg, verbosity,
+		    MBEDTLS_SSL_IS_SERVER, MBEDTLS_SSL_VERIFY_REQUIRED,
+		    &cacert, &server_cert, &key);
+    // Setup client SSL:
+    ret = setup_ssl(&ssl_peer_send, &ssl_conf_peer_send,
+		    mbedtls_ctr_drbg_random, &ctr_drbg, verbosity,
+		    MBEDTLS_SSL_IS_CLIENT, MBEDTLS_SSL_VERIFY_REQUIRED,
+		    &cacert, &client_cert, &key);
 
     std::cout << "Binding to port..." << std::endl;
     mbedtls_net_init(&listen_fd);
-    ret = mbedtls_net_bind(&listen_fd, NULL, port.c_str(), MBEDTLS_NET_PROTO_TCP);
+    ret = mbedtls_net_bind(&listen_fd, NULL, port_listen.c_str(), MBEDTLS_NET_PROTO_TCP);
     handle_error(ret, "Failed to bind to port");
 
+    int counter = 0;
     while (true) {
         mbedtls_net_init(&peer_fd);
-        ret = mbedtls_net_accept(&listen_fd, &peer_fd, NULL, 0, NULL);
-        if (ret != 0) {
-            std::cerr << "Failed to accept connection. Error code: " << ret
-		    << std::endl;
+
+	if (std::strcmp(connect_first.c_str(), "TRUE") == 0 || counter == 1){
+	    std::cout << "Connecting to server..." << std::endl;
+            ret = mbedtls_net_connect(&peer_fd, peer_addr.c_str(), port_send.c_str(),
+			MBEDTLS_NET_PROTO_TCP);
+            handle_error(ret, "Failed to connect to server.");
+
+            ret = do_handshake(&ssl_peer_send, &peer_fd);
+            if (ret != 0) {
+                std::cerr << "Handshake failed. Error code: " << ret << std::endl;
+                std::cerr << get_ssl_verify_result(ssl_peer_send) << std::endl;
+            } else {
+                std::cout << "Handshake successful!" << std::endl;
+            }
+
+            mbedtls_ssl_close_notify(&ssl_peer_send);
             mbedtls_net_free(&peer_fd);
-            continue; // Continue to accept new connections
-        }
-
-        std::cout << "Client connected. Setting up SSL..." << std::endl;
-        mbedtls_ssl_set_bio(&ssl_peer, &peer_fd, mbedtls_net_send,
-			mbedtls_net_recv, NULL);
-        ret = mbedtls_ssl_handshake(&ssl_peer);
-        if (ret != 0) {
-            std::cerr << "SSL handshake failed. Error code: " << ret
+	}
+	else {
+            ret = mbedtls_net_accept(&listen_fd, &peer_fd, NULL, 0, NULL);
+            if (ret != 0) {
+                std::cerr << "Failed to accept connection. Error code: " << ret
 		    << std::endl;
-            std::string verify_result = get_ssl_verify_result(ssl_peer);
-            std::cout << verify_result << std::endl;
-        } else {
-            std::cout << "SSL handshake successful\n";
-        }
+                mbedtls_net_free(&peer_fd);
+                continue; // Continue to accept new connections
+            }
 
-        // Close the connection
-        mbedtls_ssl_close_notify(&ssl_peer);
+            ret = do_handshake(&ssl_peer_listen, &peer_fd);
+            if (ret != 0) {
+                std::cerr << "SSL handshake failed. Error code: " << ret
+		    << std::endl;
+                std::string verify_result = get_ssl_verify_result(ssl_peer_listen);
+                std::cout << verify_result << std::endl;
+            } else {
+                std::cout << "SSL handshake successful\n";
+            }
+            mbedtls_ssl_close_notify(&ssl_peer_listen);
+            mbedtls_ssl_session_reset(&ssl_peer_listen);
+	}
+
         mbedtls_net_free(&peer_fd);
-        mbedtls_ssl_session_reset(&ssl_peer);  // Reset SSL session for the next connection
+
+	counter = 1;
+	sleep(1);
     }
 
     // Cleanup resources
     mbedtls_net_free(&listen_fd);
 
-    mbedtls_ssl_free(&ssl_ca_server);
-    mbedtls_ssl_config_free(&ssl_conf_ca_server);
-    mbedtls_ssl_free(&ssl_peer);
-    mbedtls_ssl_config_free(&ssl_conf_peer);
+    mbedtls_ssl_free(&ssl_peer_listen);
+    mbedtls_ssl_config_free(&ssl_conf_peer_listen);
+    mbedtls_ssl_free(&ssl_peer_send);
+    mbedtls_ssl_config_free(&ssl_conf_peer_send);
     mbedtls_x509_crt_free(&cacert);
     mbedtls_pk_free(&key);
-    mbedtls_x509_crt_free(&cert);
+    mbedtls_x509_crt_free(&client_cert);
+    mbedtls_x509_crt_free(&server_cert);
     mbedtls_ctr_drbg_free(&ctr_drbg);
     mbedtls_entropy_free(&entropy);
 
