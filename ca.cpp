@@ -168,6 +168,7 @@ int main(int argc, char *argv[]) {
     handle_error(ret, "Failed to configure SSL");
 
     mbedtls_ssl_conf_authmode(&ssl_conf, MBEDTLS_SSL_VERIFY_OPTIONAL);
+    mbedtls_ssl_conf_own_cert(&ssl_conf, &root_cert, &private_key);
     mbedtls_ssl_conf_rng(&ssl_conf, mbedtls_ctr_drbg_random, &ctr_drbg);
 
     // Set debug callback and verbosity level
@@ -205,6 +206,7 @@ int main(int argc, char *argv[]) {
 		    << std::endl;
             std::string verify_result = get_ssl_verify_result(ssl);
             std::cout << verify_result << std::endl;
+	    continue;
         } else {
             std::cout << "SSL handshake successful\n";
         }
