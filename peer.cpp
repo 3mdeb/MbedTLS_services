@@ -101,7 +101,6 @@ static int send_csr(mbedtls_ssl_context *ssl, unsigned char csr_buf[CSR_SIZE]){
     int ret = 0;
 
     ret = mbedtls_ssl_write(ssl, csr_buf, CSR_SIZE);
-    handle_error(ret, "Failed to send CSR.");
 
     return ret;
 }
@@ -111,7 +110,6 @@ static int recieve_certificate(mbedtls_ssl_context *ssl,
     int ret = 0;
 
     ret = mbedtls_ssl_read(ssl, cert_buf, CERT_SIZE);
-    handle_error(ret, "Failed to recieve certificate");
 
     return ret;
 }
@@ -159,10 +157,10 @@ static int get_cert_from_ca(mbedtls_x509_crt *cert,mbedtls_pk_context *key,
     handle_error(ret, "Failed to do a handshake with CA server");
 
     ret = send_csr(&ssl_ca_server, csr_buf);
-    handle_error(ret, "Failed to send CSR");
+    handle_error(ret, "Failed to send CSR", CSR_SIZE);
 
     ret = recieve_certificate(&ssl_ca_server, cert_buf);
-    handle_error(ret, "Failed to get server certificate from CA");
+    handle_error(ret, "Failed to get server certificate from CA", CERT_SIZE);
 
     ret = mbedtls_x509_crt_parse_der(cert, cert_buf, CERT_SIZE);
     handle_error(ret, "Failed to parse issued certificate");

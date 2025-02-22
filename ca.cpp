@@ -77,7 +77,6 @@ static int send_certificate_to_client(mbedtls_ssl_context *ssl,
     int ret = 0;
 
     ret = mbedtls_ssl_write(ssl, cert_buf, (size_t)CERT_SIZE);
-    handle_error(ret, "Failed to send certificate.");
 
     return ret;
 }
@@ -241,7 +240,7 @@ int main(int argc, char *argv[]) {
 
 	std::cout << "Reading client CSR...\n";
 	ret = receive_csr(&ssl, csr_buf);
-	handle_error(ret, "Failed to read client CSR.");
+	handle_error(ret, "Failed to read client CSR.", CSR_SIZE);
 
 	std::cout << "Parsing client CSR...\n";
         ret = mbedtls_x509_csr_parse(&csr, csr_buf, (size_t)CSR_SIZE);
@@ -252,7 +251,7 @@ int main(int argc, char *argv[]) {
 	handle_error(ret, "Failed to issue client certificate");
 
 	ret = send_certificate_to_client(&ssl, issued_cert_buf);
-	handle_error(ret, "Failed to send client certificate");
+	handle_error(ret, "Failed to send client certificate", CERT_SIZE);
 
         // Close the connection
         mbedtls_ssl_close_notify(&ssl);
