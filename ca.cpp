@@ -4,7 +4,9 @@ void print_help(const std::string& binary_name) {
     std::cout << "Usage: " << binary_name << " [options]\n";
     std::cout << "Options:\n";
     std::cout << "  --ca-root-certificate <file> CA root certificate file (required)\n";
-    std::cout << "  --ca-private-key <file> CA private key file (required)\n";
+    std::cout << "  --ca-root-key <file>    CA private key file (required)\n";
+    std::cout << "  --ca-server-certificate <file>  CA self-signed server certificate\n";
+    std::cout << "  --ca-server-key <file>  CA server private key\n";
     std::cout << "  -p <port>               Port to listen on (default: 4433)\n";
     std::cout << "  -v, -vv, -vvv, -vvvv    Set verbosity level (default: 0)\n";
     std::cout << "  -h, --help              Show this help message\n";
@@ -83,9 +85,13 @@ static int send_certificate_to_client(mbedtls_ssl_context *ssl,
 int main(int argc, char *argv[]) {
     // Keys and certificates:
     mbedtls_x509_crt root_cert;
-    mbedtls_pk_context private_key;
+    mbedtls_pk_context root_key;
     std::string root_cert_file;
-    std::string private_key_file;
+    std::string root_key_file;
+    mbedtls_x509_crt server_cert;
+    mbedtls_pk_context server_key;
+    std::string server_cert_file;
+    std::string server_key_file;
 
     // SSL:
     mbedtls_net_context listen_fd, client_fd;
@@ -124,8 +130,12 @@ int main(int argc, char *argv[]) {
             port = argv[++i];
         } else if (arg == "--ca-root-certificate" && i + 1 < argc) {
             root_cert_file = argv[++i];
-        } else if (arg == "--ca-private-key" && i + 1 < argc) {
-            private_key_file = argv[++i];
+        } else if (arg == "--ca-root-key" && i + 1 < argc) {
+            root_key_file = argv[++i];
+        } else if (arg == "--ca-server-certificate" && i + 1 < argc) {
+            server_cert_file = argv[++i];
+        } else if (arg == "--ca-server-key" && i + 1 < argc) {
+            server_key_file = argv[++i];
         } else {
             std::cerr << "Unexpected argument: " << arg << std::endl;
             print_help(binary_name);
@@ -133,7 +143,8 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    if (root_cert_file.empty() || private_key_file.empty()) {
+    if (root_cert_file.empty() || root_key_file.empty()
+		    || server_cert_file.empty() || server_key_file.empty()) {
         std::cerr << "Required argument missing.\n";
         print_help(binary_name);
         return 1;
@@ -142,7 +153,9 @@ int main(int argc, char *argv[]) {
     mbedtls_ssl_init(&ssl);
     mbedtls_ssl_config_init(&ssl_conf);
     mbedtls_x509_crt_init(&root_cert);
-    mbedtls_pk_init(&private_key);
+    mbedtls_pk_init(&root_key);
+    mbedtls_x509_crt_init(&server_cert);
+    mbedtls_pk_init(&server_key);
     mbedtls_ctr_drbg_init(&ctr_drbg);
     mbedtls_entropy_init(&entropy);
 
@@ -156,9 +169,18 @@ int main(int argc, char *argv[]) {
     ret = mbedtls_x509_crt_parse_file(&root_cert, root_cert_file.c_str());
     handle_error(ret, "Failed to parse CA certificate");
 
+    std::cout << "Loading root private key..." << std::endl;
+    ret = mbedtls_pk_parse_keyfile(&root_key, root_key_file.c_str(), NULL, mbedtls_ctr_drbg_random, &ctr_drbg);
+    handle_error(ret, "Failed to parse root private key");
+
+    std::cout << "Loading server certificate..." << std::endl;
+    ret = mbedtls_x509_crt_parse_file(&server_cert, server_cert_file.c_str());
+    handle_error(ret, "Failed to parse server certificate");
+
     std::cout << "Loading server private key..." << std::endl;
-    ret = mbedtls_pk_parse_keyfile(&private_key, private_key_file.c_str(), NULL, mbedtls_ctr_drbg_random, &ctr_drbg);
+    ret = mbedtls_pk_parse_keyfile(&server_key, server_key_file.c_str(), NULL, mbedtls_ctr_drbg_random, &ctr_drbg);
     handle_error(ret, "Failed to parse server private key");
+
 
     std::cout << "Setting up SSL configuration..." << std::endl;
     ret = mbedtls_ssl_config_defaults(&ssl_conf,
@@ -168,7 +190,8 @@ int main(int argc, char *argv[]) {
     handle_error(ret, "Failed to configure SSL");
 
     mbedtls_ssl_conf_authmode(&ssl_conf, MBEDTLS_SSL_VERIFY_OPTIONAL);
-    mbedtls_ssl_conf_own_cert(&ssl_conf, &root_cert, &private_key);
+    mbedtls_ssl_conf_ca_chain(&ssl_conf, &root_cert, NULL);
+    mbedtls_ssl_conf_own_cert(&ssl_conf, &server_cert, &server_key);
     mbedtls_ssl_conf_rng(&ssl_conf, mbedtls_ctr_drbg_random, &ctr_drbg);
 
     // Set debug callback and verbosity level
@@ -206,6 +229,11 @@ int main(int argc, char *argv[]) {
 		    << std::endl;
             std::string verify_result = get_ssl_verify_result(ssl);
             std::cout << verify_result << std::endl;
+
+            mbedtls_ssl_close_notify(&ssl);
+            mbedtls_net_free(&client_fd);
+            mbedtls_ssl_session_reset(&ssl);
+
 	    continue;
         } else {
             std::cout << "SSL handshake successful\n";
@@ -219,7 +247,7 @@ int main(int argc, char *argv[]) {
         ret = mbedtls_x509_csr_parse(&csr, csr_buf, (size_t)CSR_SIZE);
 	handle_error(ret, "Could not parse client CSR");
 
-	ret = issue_client_certificate(&private_key, &csr,
+	ret = issue_client_certificate(&root_key, &csr,
 		issued_cert_buf, mbedtls_ctr_drbg_random, &ctr_drbg);
 	handle_error(ret, "Failed to issue client certificate");
 
@@ -238,7 +266,7 @@ int main(int argc, char *argv[]) {
     mbedtls_ssl_free(&ssl);
     mbedtls_ssl_config_free(&ssl_conf);
     mbedtls_x509_crt_free(&root_cert);
-    mbedtls_pk_free(&private_key);
+    mbedtls_pk_free(&root_key);
     mbedtls_ctr_drbg_free(&ctr_drbg);
     mbedtls_entropy_free(&entropy);
 
