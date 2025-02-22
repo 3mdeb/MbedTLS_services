@@ -21,7 +21,7 @@ void cleanup_mbedtls(mbedtls_ssl_context &ssl, mbedtls_ssl_config &ssl_conf, mbe
 }
 
 void handle_error(int ret, const std::string &msg, int expected, bool print_ret) {
-    if (ret != expected) {
+    if (ret != expected && ret < 0) {
         std::cerr << msg;
         if (print_ret) {
             std::cerr << std::endl << " Error code: " << ret;
