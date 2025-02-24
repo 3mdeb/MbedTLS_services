@@ -31,10 +31,10 @@ int issue_client_certificate(mbedtls_pk_context *ca_key, mbedtls_x509_csr *csr,
     ret = mbedtls_x509write_crt_set_key_usage(&cert, csr->key_usage);
     handle_error(ret, "Failed to set certificate key usage");
 
-    ret = mbedtls_x509write_crt_set_issuer_name(&cert, "CN=CA,O=mbed TLS,C=PL");
+    ret = mbedtls_x509write_crt_set_issuer_name(&cert, "CN=My Test CA,O=mbed TLS,C=PL");
     handle_error(ret, "Failed to set certificate issuer");
 
-    ret = mbedtls_x509write_crt_set_subject_name(&cert, "CN=Cert,O=mbed TLS,C=PL");
+    ret = mbedtls_x509write_crt_set_subject_name(&cert, "CN=localhost,O=mbed TLS,C=PL");
     handle_error(ret, "Failed to set certificate subject");
 
     mbedtls_x509write_crt_set_subject_key(&cert, &(csr->pk));
