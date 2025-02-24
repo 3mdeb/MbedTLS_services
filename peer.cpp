@@ -162,7 +162,7 @@ static int get_cert_from_ca(mbedtls_x509_crt *cert,mbedtls_pk_context *key,
     ret = recieve_certificate(&ssl_ca_server, cert_buf);
     handle_error(ret, "Failed to get server certificate from CA", CERT_SIZE);
 
-    ret = mbedtls_x509_crt_parse_der(cert, cert_buf, CERT_SIZE);
+    ret = mbedtls_x509_crt_parse(cert, cert_buf, CERT_SIZE);
     handle_error(ret, "Failed to parse issued certificate");
 
     mbedtls_net_free(&ca_server_fd);

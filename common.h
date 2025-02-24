@@ -18,7 +18,7 @@
 #define DEFAULT_SEND_PORT "4433"
 #define CSR_SIZE 4096
 #define KEY_SIZE 4096
-#define CERT_SIZE 5000
+#define CERT_SIZE 4096
 #define PUBLIC_EXPONENT 65537
 
 void initialize_mbedtls(mbedtls_ssl_context &ssl, mbedtls_ssl_config &ssl_conf,

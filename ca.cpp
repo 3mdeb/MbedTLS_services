@@ -56,7 +56,7 @@ int issue_client_certificate(mbedtls_pk_context *ca_key, mbedtls_x509_csr *csr,
     mbedtls_x509write_crt_set_md_alg(&cert, MBEDTLS_MD_SHA256);
     mbedtls_x509write_crt_set_issuer_key(&cert, ca_key);
 
-    ret = mbedtls_x509write_crt_der(&cert, cert_buf, (size_t)CERT_SIZE,
+    ret = mbedtls_x509write_crt_pem(&cert, cert_buf, (size_t)CERT_SIZE,
                               f_rng, ctr_drbg);
     handle_error(ret, "Failed to write client certificate");
 
