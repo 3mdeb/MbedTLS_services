@@ -328,57 +328,70 @@ int main(int argc, char *argv[]) {
     ret = mbedtls_net_bind(&listen_fd, NULL, port_listen.c_str(), MBEDTLS_NET_PROTO_TCP);
     handle_error(ret, "Failed to bind to port");
 
-    int counter = 0;
-    while (true) {
+    if (std::strcmp(connect_first.c_str(), "TRUE") == 0){
         mbedtls_net_init(&peer_fd);
 
-	if (std::strcmp(connect_first.c_str(), "TRUE") == 0 || counter == 1){
-	    std::cout << "Connecting to server..." << std::endl;
-            ret = mbedtls_net_connect(&peer_fd, peer_addr.c_str(), port_send.c_str(),
+        std::cout << "Connecting to server..." << std::endl;
+        ret = mbedtls_net_connect(&peer_fd, peer_addr.c_str(), port_send.c_str(),
 			MBEDTLS_NET_PROTO_TCP);
-            handle_error(ret, "Failed to connect to server.");
+        handle_error(ret, "Failed to connect to server.");
 
-            ret = do_handshake(&ssl_peer_send, &peer_fd);
-            if (ret != 0) {
-                std::cerr << "Handshake failed. Error code: " << ret << std::endl;
-                std::cerr << get_ssl_verify_result(ssl_peer_send) << std::endl;
-            } else {
-                std::cout << "Handshake successful!" << std::endl;
-            }
+        ret = do_handshake(&ssl_peer_send, &peer_fd);
+        if (ret != 0) {
+            std::cerr << "Handshake failed. Error code: " << ret << std::endl;
+            std::cerr << get_ssl_verify_result(ssl_peer_send) << std::endl;
+        } else {
+            std::cout << "Handshake successful!" << std::endl;
+        }
 
-            mbedtls_ssl_close_notify(&ssl_peer_send);
-            mbedtls_net_free(&peer_fd);
-	}
-	else {
-            ret = mbedtls_net_accept(&listen_fd, &peer_fd, NULL, 0, NULL);
-            if (ret != 0) {
-                std::cerr << "Failed to accept connection. Error code: " << ret
-		    << std::endl;
-                mbedtls_net_free(&peer_fd);
-                continue; // Continue to accept new connections
-            }
-
-            ret = do_handshake(&ssl_peer_listen, &peer_fd);
-            if (ret != 0) {
-                std::cerr << "SSL handshake failed. Error code: " << ret
-		    << std::endl;
-                std::string verify_result = get_ssl_verify_result(ssl_peer_listen);
-                std::cout << verify_result << std::endl;
-            } else {
-                std::cout << "SSL handshake successful\n";
-            }
-            mbedtls_ssl_close_notify(&ssl_peer_listen);
-            mbedtls_ssl_session_reset(&ssl_peer_listen);
-	}
-
+        mbedtls_ssl_close_notify(&ssl_peer_send);
         mbedtls_net_free(&peer_fd);
-
-	counter = 1;
-	sleep(1);
     }
 
-    // Cleanup resources
+    sleep(1);
+
+    mbedtls_net_init(&peer_fd);
+
+    ret = mbedtls_net_accept(&listen_fd, &peer_fd, NULL, 0, NULL);
+    if (ret != 0) {
+        std::cerr << "Failed to accept connection. Error code: " << ret
+		<< std::endl;
+        mbedtls_net_free(&peer_fd);
+    }
+
+    ret = do_handshake(&ssl_peer_listen, &peer_fd);
+    if (ret != 0) {
+        std::cerr << "SSL handshake failed. Error code: " << ret
+		<< std::endl;
+        std::string verify_result = get_ssl_verify_result(ssl_peer_listen);
+        std::cout << verify_result << std::endl;
+    } else {
+        std::cout << "SSL handshake successful\n";
+    }
+    mbedtls_ssl_close_notify(&ssl_peer_listen);
+    mbedtls_net_free(&peer_fd);
     mbedtls_net_free(&listen_fd);
+
+    sleep(1);
+
+    if (std::strcmp(connect_first.c_str(), "FALSE") == 0){
+        mbedtls_net_init(&peer_fd);
+
+        std::cout << "Connecting to server..." << std::endl;
+        ret = mbedtls_net_connect(&peer_fd, peer_addr.c_str(), port_send.c_str(),
+			MBEDTLS_NET_PROTO_TCP);
+        handle_error(ret, "Failed to connect to server.");
+
+        ret = do_handshake(&ssl_peer_send, &peer_fd);
+        if (ret != 0) {
+            std::cerr << "Handshake failed. Error code: " << ret << std::endl;
+            std::cerr << get_ssl_verify_result(ssl_peer_send) << std::endl;
+        } else {
+            std::cout << "Handshake successful!" << std::endl;
+        }
+        mbedtls_ssl_close_notify(&ssl_peer_send);
+        mbedtls_net_free(&peer_fd);
+    }
 
     mbedtls_ssl_free(&ssl_peer_listen);
     mbedtls_ssl_config_free(&ssl_conf_peer_listen);
