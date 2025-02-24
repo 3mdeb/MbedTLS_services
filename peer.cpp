@@ -12,6 +12,7 @@ void print_help(const std::string& binary_name) {
     std::cout << "  --peer-addr <ip address> Peer addres for mutual authentication\n";
     std::cout << "  -pl <port>               Port to listen on (default: 4432)\n";
     std::cout << "  -ps <port>               Port to send from (default: 4433)\n";
+    std::cout << "  -pca <port>              Port for communication with CA (default: 4430)\n";
     std::cout << "  --connect-first <TRUE/FALSE> Whether this instance will connect\n";
     std::cout << "  to peer first (TRUE), or will wait for peer to connect first\n";
     std::cout <<"  (FALSE) and then try to connect\n";
@@ -184,6 +185,7 @@ int main(int argc, char *argv[]) {
     mbedtls_ssl_config ssl_conf_peer_listen, ssl_conf_peer_send;
     std::string port_listen = DEFAULT_LISTEN_PORT;
     std::string port_send = DEFAULT_SEND_PORT;
+    std::string port_ca = DEFAULT_CA_PORT;
     std::string ca_server_addr;
     std::string peer_addr;
 
@@ -214,6 +216,8 @@ int main(int argc, char *argv[]) {
             port_listen = argv[++i];
         } else if (arg == "-ps" && i + 1 < argc) {
             port_send = argv[++i];
+        } else if (arg == "-pca" && i + 1 < argc) {
+            port_ca = argv[++i];
         } else if (arg == "--connect-first" && i + 1 < argc) {
             connect_first = argv[++i];
 	    if (std::strcmp(connect_first.c_str(), "TRUE") != 0 && std::strcmp(connect_first.c_str(), "FALSE") != 0){
@@ -280,13 +284,13 @@ int main(int argc, char *argv[]) {
 
     // Get server certificate:
     ret = get_cert_from_ca(&server_cert, &key, mbedtls_ctr_drbg_random,
-		&ctr_drbg, verbosity, ca_server_addr, port_send,
+		&ctr_drbg, verbosity, ca_server_addr, port_ca,
 		MBEDTLS_X509_NS_CERT_TYPE_SSL_SERVER);
     handle_error(ret, "Failed to get server certificate");
 
     // Get client certificate:
     ret = get_cert_from_ca(&client_cert, &key, mbedtls_ctr_drbg_random,
-		&ctr_drbg, verbosity, ca_server_addr, port_send,
+		&ctr_drbg, verbosity, ca_server_addr, port_ca,
 		MBEDTLS_X509_NS_CERT_TYPE_SSL_CLIENT);
     handle_error(ret, "Failed to get client certificate");
 

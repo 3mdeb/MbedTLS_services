@@ -7,7 +7,7 @@ void print_help(const std::string& binary_name) {
     std::cout << "  --ca-root-key <file>    CA private key file (required)\n";
     std::cout << "  --ca-server-certificate <file>  CA self-signed server certificate\n";
     std::cout << "  --ca-server-key <file>  CA server private key\n";
-    std::cout << "  -p <port>               Port to listen on (default: 4433)\n";
+    std::cout << "  -p <port>               Port to listen on (default: 4430)\n";
     std::cout << "  -v, -vv, -vvv, -vvvv    Set verbosity level (default: 0)\n";
     std::cout << "  -h, --help              Show this help message\n";
 }
@@ -96,7 +96,7 @@ int main(int argc, char *argv[]) {
     mbedtls_net_context listen_fd, client_fd;
     mbedtls_ssl_context ssl;
     mbedtls_ssl_config ssl_conf;
-    std::string port = DEFAULT_LISTEN_PORT;
+    std::string port = DEFAULT_CA_PORT;
 
     mbedtls_x509_csr csr;
     unsigned char csr_buf[CSR_SIZE];

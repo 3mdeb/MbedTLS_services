@@ -14,6 +14,7 @@
 #include <mbedtls/x509_csr.h>
 #include <psa/crypto.h>
 
+#define DEFAULT_CA_PORT "4430"
 #define DEFAULT_LISTEN_PORT "4432"
 #define DEFAULT_SEND_PORT "4433"
 #define CSR_SIZE 4096
