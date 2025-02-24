@@ -173,6 +173,14 @@ static int get_cert_from_ca(mbedtls_x509_crt *cert,mbedtls_pk_context *key,
     return ret;
 }
 
+void print_cert(mbedtls_x509_crt *cert){
+    char buf[16384];
+
+    mbedtls_x509_crt_info(buf, (size_t)16384, NULL, cert);
+
+    std::cout << buf << std::endl;
+}
+
 int main(int argc, char *argv[]) {
     mbedtls_x509_crt cacert;
     mbedtls_x509_crt client_cert, server_cert;
@@ -287,12 +295,16 @@ int main(int argc, char *argv[]) {
 		&ctr_drbg, verbosity, ca_server_addr, port_ca,
 		MBEDTLS_X509_NS_CERT_TYPE_SSL_SERVER);
     handle_error(ret, "Failed to get server certificate");
+    std::cout << "Server certificate:\n" << std::endl;
+    print_cert(&server_cert);
 
     // Get client certificate:
     ret = get_cert_from_ca(&client_cert, &key, mbedtls_ctr_drbg_random,
 		&ctr_drbg, verbosity, ca_server_addr, port_ca,
 		MBEDTLS_X509_NS_CERT_TYPE_SSL_CLIENT);
     handle_error(ret, "Failed to get client certificate");
+    std::cout << "Client certificate:\n" << std::endl;
+    print_cert(&client_cert);
 
     // Initialize server SLL:
     mbedtls_ssl_init(&ssl_peer_listen);
