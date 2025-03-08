@@ -1,22 +1,44 @@
 #include "common.h"
 
+#define PEER_CERT_ISSUER_NAME "CN=My Test CA"
+#define PEER_CERT_SUBJECT_NAME "CN=localhost"
+#define CA_CERT_ISSUER_NAME "CN=My Test CA"
+#define CA_CERT_SUBJECT_NAME "CN=My Test CA"
+#define KEY_USAGE MBEDTLS_X509_KU_DIGITAL_SIGNATURE |\
+		    MBEDTLS_X509_KU_NON_REPUDIATION |\
+		    MBEDTLS_X509_KU_KEY_ENCIPHERMENT |\
+		    MBEDTLS_X509_KU_DATA_ENCIPHERMENT |\
+		    MBEDTLS_X509_KU_KEY_AGREEMENT |\
+		    MBEDTLS_X509_KU_KEY_CERT_SIGN |\
+		    MBEDTLS_X509_KU_CRL_SIGN
+#define CRT_VALIDITY_START "20250217000000"
+#define CRT_VALIDITY_END "20260217000000"
+
+#define ROOT_KEY_SUBJECT "CA root key"
+#define SERVER_KEY_SUBJECT "CA server key"
+#define ROOT_KEY_ID 124
+#define ROOT_KEY_ID_SIZE 3
+#define SERVER_KEY_ID 125
+#define SERVER_KEY_ID_SIZE 3
+
 void print_help(const std::string& binary_name) {
     std::cout << "Usage: " << binary_name << " [options]\n";
     std::cout << "Options:\n";
-    std::cout << "  --ca-root-certificate <file> CA root certificate file (required)\n";
-    std::cout << "  --ca-root-key <file>    CA private key file (required)\n";
-    std::cout << "  --ca-server-certificate <file>  CA self-signed server certificate\n";
-    std::cout << "  --ca-server-key <file>  CA server private key\n";
     std::cout << "  -p <port>               Port to listen on (default: 4430)\n";
+    std::cout << "  --slot-id               PKCS#11 slot ID to use\n";
+    std::cout << "  --pin                   PKCS#11 token pin\n";
     std::cout << "  -v, -vv, -vvv, -vvvv    Set verbosity level (default: 0)\n";
     std::cout << "  -h, --help              Show this help message\n";
 }
 
 // Function to generate a client certificate signed by the CA
-int issue_client_certificate(mbedtls_pk_context *ca_key, mbedtls_x509_csr *csr,
+int issue_certificate(mbedtls_pk_context *ca_key,
 		unsigned char cert_buf[CERT_SIZE],
 		int (*f_rng)(void *, unsigned char *, size_t),
-		mbedtls_ctr_drbg_context *ctr_drbg) {
+		mbedtls_ctr_drbg_context *ctr_drbg, unsigned char ns_cert_type,
+		unsigned int key_usage, const char *issuer_name,
+		const char *subject_name, mbedtls_pk_context *subject_key,
+		const char *validity_start, const char *validity_end) {
     int ret = 0;
     mbedtls_x509write_cert cert; 
 
@@ -25,19 +47,25 @@ int issue_client_certificate(mbedtls_pk_context *ca_key, mbedtls_x509_csr *csr,
 
     mbedtls_x509write_crt_set_version(&cert, MBEDTLS_X509_CRT_VERSION_3);
 
-    ret = mbedtls_x509write_crt_set_ns_cert_type(&cert, csr->ns_cert_type);
+    ret = mbedtls_x509write_crt_set_ns_cert_type(&cert, ns_cert_type);
     handle_error(ret, "Failed to set certificate type");
 
-    ret = mbedtls_x509write_crt_set_key_usage(&cert, csr->key_usage);
+    ret = mbedtls_x509write_crt_set_key_usage(&cert, key_usage);
     handle_error(ret, "Failed to set certificate key usage");
 
-    ret = mbedtls_x509write_crt_set_issuer_name(&cert, "CN=My Test CA");
+    ret = mbedtls_x509write_crt_set_issuer_name(&cert, issuer_name);
     handle_error(ret, "Failed to set certificate issuer");
 
-    ret = mbedtls_x509write_crt_set_subject_name(&cert, "CN=localhost");
+    ret = mbedtls_x509write_crt_set_subject_name(&cert, subject_name);
     handle_error(ret, "Failed to set certificate subject");
 
-    mbedtls_x509write_crt_set_subject_key(&cert, &(csr->pk));
+    mbedtls_x509write_crt_set_subject_key(&cert, subject_key);
+
+    if(ns_cert_type == MBEDTLS_X509_NS_CERT_TYPE_SSL_CA){
+	// 1 - is CA, -1 - path length unlimited:
+        ret = mbedtls_x509write_crt_set_basic_constraints(&cert, 1, -1);
+	handle_error(ret, "Failed to set CA certificate basic constraints ext.");
+    }
 
     unsigned char serial_number[16];
     ret = mbedtls_ctr_drbg_random(ctr_drbg, serial_number,
@@ -49,8 +77,8 @@ int issue_client_certificate(mbedtls_pk_context *ca_key, mbedtls_x509_csr *csr,
     handle_error(ret, "Failed to set certificate serial number");
 
     // Set validity period start (17.02.2026 00:00:00) and end (17.02.2025 00:00:00):
-    ret = mbedtls_x509write_crt_set_validity(&cert, "20250217000000",
-		    "20260217000000");
+    ret = mbedtls_x509write_crt_set_validity(&cert, validity_start,
+		    validity_end);
     handle_error(ret, "Failed to set certificate validity period");
 
     mbedtls_x509write_crt_set_md_alg(&cert, MBEDTLS_MD_SHA256);
@@ -85,12 +113,10 @@ int main(int argc, char *argv[]) {
     // Keys and certificates:
     mbedtls_x509_crt root_cert;
     mbedtls_pk_context root_key;
-    std::string root_cert_file;
-    std::string root_key_file;
     mbedtls_x509_crt server_cert;
     mbedtls_pk_context server_key;
-    std::string server_cert_file;
-    std::string server_key_file;
+    std::string root_key_subject = ROOT_KEY_SUBJECT;
+    std::string server_key_subject = SERVER_KEY_SUBJECT;
 
     // SSL:
     mbedtls_net_context listen_fd, client_fd;
@@ -101,6 +127,8 @@ int main(int argc, char *argv[]) {
     mbedtls_x509_csr csr;
     unsigned char csr_buf[CSR_SIZE];
     unsigned char issued_cert_buf[CERT_SIZE];
+    unsigned char ca_cert_buf[CERT_SIZE];
+    unsigned char server_cert_buf[CERT_SIZE];
 
     // Other:
     mbedtls_ctr_drbg_context ctr_drbg;
@@ -110,6 +138,10 @@ int main(int argc, char *argv[]) {
 
     // Get binary name for print_help
     std::string binary_name = argv[0];
+
+    // PKCS#11 variables:
+    std::string user_pin;
+    std::string slot_id;
 
     // Parse command-line arguments
     for (int i = 1; i < argc; ++i) {
@@ -127,26 +159,15 @@ int main(int argc, char *argv[]) {
             verbosity = 4;
         } else if (arg == "-p" && i + 1 < argc) {
             port = argv[++i];
-        } else if (arg == "--ca-root-certificate" && i + 1 < argc) {
-            root_cert_file = argv[++i];
-        } else if (arg == "--ca-root-key" && i + 1 < argc) {
-            root_key_file = argv[++i];
-        } else if (arg == "--ca-server-certificate" && i + 1 < argc) {
-            server_cert_file = argv[++i];
-        } else if (arg == "--ca-server-key" && i + 1 < argc) {
-            server_key_file = argv[++i];
+	} else if (arg == "--pin" && i + 1 < argc){
+            user_pin = argv[++i];
+	} else if (arg == "--slot-id" && i + 1 < argc){
+            slot_id = argv[++i];
         } else {
             std::cerr << "Unexpected argument: " << arg << std::endl;
             print_help(binary_name);
             return 1;
         }
-    }
-
-    if (root_cert_file.empty() || root_key_file.empty()
-		    || server_cert_file.empty() || server_key_file.empty()) {
-        std::cerr << "Required argument missing.\n";
-        print_help(binary_name);
-        return 1;
     }
 
     mbedtls_ssl_init(&ssl);
@@ -164,22 +185,31 @@ int main(int argc, char *argv[]) {
 		    0);
     handle_error(ret, "Failed to seed CTR-DRBG");
 
-    std::cout << "Loading root certificate..." << std::endl;
-    ret = mbedtls_x509_crt_parse_file(&root_cert, root_cert_file.c_str());
-    handle_error(ret, "Failed to parse CA certificate");
+    std::cout << "Generating root key..." << std::endl;
+    ret = generate_keypair(&root_key, slot_id, user_pin, root_key_subject, {ROOT_KEY_ID}, ROOT_KEY_ID_SIZE);
+    handle_error(ret, "Failed to generate root key");
 
-    std::cout << "Loading root private key..." << std::endl;
-    ret = mbedtls_pk_parse_keyfile(&root_key, root_key_file.c_str(), NULL, mbedtls_ctr_drbg_random, &ctr_drbg);
-    handle_error(ret, "Failed to parse root private key");
+    std::cout << "Generating server key..." << std::endl;
+    ret = generate_keypair(&server_key, slot_id, user_pin, server_key_subject, {SERVER_KEY_ID}, SERVER_KEY_ID_SIZE);
+    handle_error(ret, "Failed to generate server key");
 
-    std::cout << "Loading server certificate..." << std::endl;
-    ret = mbedtls_x509_crt_parse_file(&server_cert, server_cert_file.c_str());
-    handle_error(ret, "Failed to parse server certificate");
+    std::cout << "Issuing CA root certificate" << std::endl;
+    ret = issue_certificate(&root_key, ca_cert_buf,
+		    mbedtls_ctr_drbg_random, &ctr_drbg, MBEDTLS_X509_NS_CERT_TYPE_SSL_CA,
+		    KEY_USAGE, CA_CERT_ISSUER_NAME, CA_CERT_SUBJECT_NAME,
+		    &root_key, CRT_VALIDITY_START, CRT_VALIDITY_END);
+    handle_error(ret, "Failed to issue root certificate");
+    ret = mbedtls_x509_crt_parse(&root_cert, ca_cert_buf, CERT_SIZE);
+    handle_error(ret, "Failed to parse issued root certificate");
 
-    std::cout << "Loading server private key..." << std::endl;
-    ret = mbedtls_pk_parse_keyfile(&server_key, server_key_file.c_str(), NULL, mbedtls_ctr_drbg_random, &ctr_drbg);
-    handle_error(ret, "Failed to parse server private key");
-
+    std::cout << "Issuing CA server certificate" << std::endl;
+    ret = issue_certificate(&root_key, server_cert_buf,
+		    mbedtls_ctr_drbg_random, &ctr_drbg, MBEDTLS_X509_NS_CERT_TYPE_SSL_SERVER,
+		    KEY_USAGE, CA_CERT_ISSUER_NAME, PEER_CERT_SUBJECT_NAME,
+		    &server_key, CRT_VALIDITY_START, CRT_VALIDITY_END);
+    handle_error(ret, "Failed to issue CA server certificate");
+    ret = mbedtls_x509_crt_parse(&server_cert, server_cert_buf, CERT_SIZE);
+    handle_error(ret, "Failed to parse issued CA server certificate");
 
     std::cout << "Setting up SSL configuration..." << std::endl;
     ret = mbedtls_ssl_config_defaults(&ssl_conf,
@@ -246,12 +276,19 @@ int main(int argc, char *argv[]) {
         ret = mbedtls_x509_csr_parse(&csr, csr_buf, (size_t)CSR_SIZE);
 	handle_error(ret, "Could not parse client CSR");
 
-	ret = issue_client_certificate(&root_key, &csr,
-		issued_cert_buf, mbedtls_ctr_drbg_random, &ctr_drbg);
+	ret = issue_certificate(&root_key, issued_cert_buf,
+			mbedtls_ctr_drbg_random, &ctr_drbg, csr.ns_cert_type,
+			csr.key_usage, PEER_CERT_ISSUER_NAME, PEER_CERT_SUBJECT_NAME,
+			&(csr.pk), CRT_VALIDITY_START, CRT_VALIDITY_END);
 	handle_error(ret, "Failed to issue client certificate");
 
 	ret = send_certificate_to_client(&ssl, issued_cert_buf);
 	handle_error(ret, "Failed to send client certificate", CERT_SIZE);
+
+	if (csr.ns_cert_type == MBEDTLS_X509_NS_CERT_TYPE_SSL_SERVER){
+            ret = send_certificate_to_client(&ssl, ca_cert_buf);
+	    handle_error(ret, "Failed to send CA certificate to client", CERT_SIZE);
+	}
 
         // Close the connection
         mbedtls_ssl_close_notify(&ssl);

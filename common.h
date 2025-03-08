@@ -12,7 +12,11 @@
 #include <mbedtls/entropy.h>
 #include <mbedtls/ctr_drbg.h>
 #include <mbedtls/x509_csr.h>
+#include <mbedtls/platform.h>
 #include <psa/crypto.h>
+#include <unistd.h>
+#include <cstring>
+#include "pkcs11.h"
 
 #define DEFAULT_CA_PORT "4430"
 #define DEFAULT_LISTEN_PORT "4432"
@@ -37,5 +41,11 @@ void debug_callback(void *ctx, int level, const char *file, int line,
 		const char *str);
 std::string get_psa_error_message(psa_status_t status);
 void handle_psa_error(psa_status_t status, const std::string &msg);
+int init_pkcs11_rsa_ctx(mbedtls_rsa_context *rsa_ctx, std::string slot_id,
+		std::string user_pin, std::string subject, CK_BYTE_PTR key_id,
+		CK_BYTE_PTR key_id_lenght);
+int generate_keypair(mbedtls_pk_context *pk_ctx, std::string slot_id,
+		std::string user_pin, std::string subject, CK_BYTE_PTR key_id,
+		CK_BYTE key_id_length);
 
 #endif
